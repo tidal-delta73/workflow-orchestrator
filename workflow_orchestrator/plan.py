@@ -157,27 +157,41 @@ def _render(levels) -> str:
     return json.dumps({"levels": levels}, ensure_ascii=False, separators=(",", ":"))
 
 
-def run(path: str, stdout, stderr) -> int:
-    """Execute the plan command, writing to the provided text streams."""
+def _load_entries(path: str, stderr):
+    """Read and fully validate a definition file.
+
+    Returns ``(entries, None)`` on success. On failure writes the single
+    diagnostic line to ``stderr`` and returns ``(None, exit_code)``; the
+    error priority, texts, and codes are the ones ``plan`` has always
+    reported, and are shared with the ``schedule`` command.
+    """
     try:
         document = _read_document(path)
     except _CannotRead:
         stderr.write(f"cannot read definition: {path}\n")
-        return 1
+        return None, 1
     except _InvalidJson:
         stderr.write("invalid json\n")
-        return 2
+        return None, 2
 
     try:
         entries = _parse_tasks(document)
     except _InvalidDefinition:
         stderr.write("invalid definition\n")
-        return 2
+        return None, 2
 
     error = _graph_error(entries)
     if error is not None:
         stderr.write(error + "\n")
-        return 2
+        return None, 2
 
+    return entries, None
+
+
+def run(path: str, stdout, stderr) -> int:
+    """Execute the plan command, writing to the provided text streams."""
+    entries, code = _load_entries(path, stderr)
+    if entries is None:
+        return code
     stdout.write(_render(_build_levels(entries)) + "\n")
     return 0

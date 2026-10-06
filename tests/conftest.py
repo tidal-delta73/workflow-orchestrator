@@ -69,6 +69,11 @@ class CliRunner:
     def plan(self, path, *, env=None, timeout=120):
         return self.run(["plan", str(path)], env=env, timeout=timeout)
 
+    def schedule(self, path, max_parallel, *, env=None, timeout=120):
+        return self.run(
+            ["schedule", str(path), str(max_parallel)], env=env, timeout=timeout
+        )
+
     def plan_many(self, paths, *, env=None, timeout=120, workers=8):
         """Run plan over many definition files concurrently, in order.
 
@@ -90,6 +95,16 @@ def render_levels(levels) -> bytes:
     return (
         json.dumps(
             {"levels": levels}, ensure_ascii=False, separators=(",", ":")
+        )
+        + "\n"
+    ).encode("utf-8")
+
+
+def render_batches(batches) -> bytes:
+    """The exact compact schedule success-output byte contract (plus newline)."""
+    return (
+        json.dumps(
+            {"batches": batches}, ensure_ascii=False, separators=(",", ":")
         )
         + "\n"
     ).encode("utf-8")
