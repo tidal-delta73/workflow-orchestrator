@@ -1,17 +1,18 @@
 """Bounded-parallel batch scheduling for workflow definitions.
 
-The scheduler only computes batches; it never executes tasks. Validation
-(reading, JSON syntax, definition structure, and graph errors) is shared
-with ``plan`` so both commands report identical diagnostics. Scheduling
-starts from every task with no dependencies; each batch takes up to
-``max_parallel`` of the currently ready tasks in Unicode code point order,
-and a successor becomes ready only once the whole batch containing its
-dependencies has been scheduled. Duplicate dependency entries count as one.
+The scheduler only computes batches; it never executes tasks. Loading,
+structural validation, and graph semantics belong to the shared
+:mod:`workflow_orchestrator.graph` core, so ``schedule`` reports exactly
+the same diagnostics as ``plan`` without reaching into any of plan's
+private functions. Scheduling starts from every task with no dependencies;
+each batch takes up to ``max_parallel`` of the currently ready tasks in
+Unicode code point order, and a successor becomes ready only once the
+whole batch containing its dependencies has been scheduled. Duplicate
+dependency entries count as one.
 """
 import json
-from collections import defaultdict
 
-from . import plan as plan_module
+from . import graph as graph_module
 
 MAX_PARALLEL_LIMIT = 2147483647
 
@@ -32,25 +33,17 @@ def parse_parallelism(text):
     return value
 
 
-def _build_batches(entries, max_parallel):
-    remaining = {}
-    waiting = defaultdict(list)
-    for task_id, deps in entries:
-        unique = set(deps)
-        remaining[task_id] = len(unique)
-        for dep in unique:
-            waiting[dep].append(task_id)
+def _build_batches(g: graph_module.Graph, max_parallel):
+    remaining = {task_id: len(g.dependencies[task_id]) for task_id in g.tasks}
 
-    ready = sorted(
-        task_id for task_id, count in remaining.items() if count == 0
-    )
+    ready = [task_id for task_id in g.tasks if remaining[task_id] == 0]
     batches = []
     while ready:
         batch = ready[:max_parallel]
         batches.append(batch)
         ready = ready[max_parallel:]
         for task_id in batch:
-            for nxt in waiting.get(task_id, ()):
+            for nxt in g.dependents[task_id]:
                 remaining[nxt] -= 1
                 if remaining[nxt] == 0:
                     ready.append(nxt)
@@ -64,8 +57,10 @@ def _render(batches) -> str:
 
 def run(path: str, max_parallel: int, stdout, stderr) -> int:
     """Execute the schedule command, writing to the provided text streams."""
-    entries, code = plan_module._load_entries(path, stderr)
-    if entries is None:
-        return code
-    stdout.write(_render(_build_batches(entries, max_parallel)) + "\n")
+    try:
+        g = graph_module.load_graph(path)
+    except graph_module.LoadError as error:
+        stderr.write(error.message + "\n")
+        return error.exit_code
+    stdout.write(_render(_build_batches(g, max_parallel)) + "\n")
     return 0
