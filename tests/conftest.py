@@ -69,6 +69,13 @@ class CliRunner:
     def plan(self, path, *, env=None, timeout=120):
         return self.run(["plan", str(path)], env=env, timeout=timeout)
 
+    def schedule(self, path, parallel, *, env=None, timeout=120):
+        return self.run(
+            ["schedule", str(path), str(parallel)],
+            env=env,
+            timeout=timeout,
+        )
+
     def plan_many(self, paths, *, env=None, timeout=120, workers=8):
         """Run plan over many definition files concurrently, in order.
 
@@ -84,12 +91,35 @@ class CliRunner:
                 )
             )
 
+    def schedule_many(self, pairs, *, env=None, timeout=120, workers=8):
+        """Run schedule over many (path, parallelism) pairs, in order."""
+        pairs = list(pairs)
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            return list(
+                pool.map(
+                    lambda pair: self.schedule(
+                        pair[0], pair[1], env=env, timeout=timeout
+                    ),
+                    pairs,
+                )
+            )
+
 
 def render_levels(levels) -> bytes:
     """The exact compact success-output byte contract (plus newline)."""
     return (
         json.dumps(
             {"levels": levels}, ensure_ascii=False, separators=(",", ":")
+        )
+        + "\n"
+    ).encode("utf-8")
+
+
+def render_batches(batches) -> bytes:
+    """The exact compact schedule success-output byte contract (plus NL)."""
+    return (
+        json.dumps(
+            {"batches": batches}, ensure_ascii=False, separators=(",", ":")
         )
         + "\n"
     ).encode("utf-8")

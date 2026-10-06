@@ -10,6 +10,7 @@ Pure-Python, no runtime dependencies.
 python3 -m workflow_orchestrator version
 python3 -m workflow_orchestrator help
 python3 -m workflow_orchestrator plan <definition.json>
+python3 -m workflow_orchestrator schedule <definition.json> <max-parallel>
 ```
 
 ## Definition format
@@ -35,6 +36,23 @@ levels without executing anything:
 Tasks without dependencies form the first level; every other task is placed
 one level below its deepest dependency. Tasks within a level are ordered by
 Unicode code point. The output does not depend on input ordering.
+
+`schedule <definition.json> <max-parallel>` validates the same definition and
+prints deterministic scheduling batches without executing anything. It starts
+with the dependency-free tasks; each batch contains up to `max-parallel`
+currently-ready tasks chosen by Unicode code point order, and tasks depending
+on a batch only become candidates after that whole batch is complete.
+Repeated dependency entries count once.
+
+```json
+{"batches":[["task-a"],["task-b"]]}
+```
+
+An empty task set prints `{"batches":[]}`. `max-parallel` is an unsigned
+ASCII decimal integer without leading zeros in the range `1` through
+`2147483647`; any other spelling (or an out-of-range value) fails with
+`invalid parallelism` on stderr and exit code 2 before the definition file is
+read.
 
 ### Exit codes
 
